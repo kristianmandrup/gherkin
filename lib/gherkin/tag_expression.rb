@@ -38,7 +38,7 @@ module Gherkin
       end
       
       return true if @ands.flatten.empty?
-      vars = tag_hash           
+      vars = tag_hash
       !!Kernel.eval(ruby_expression)
     end
 
@@ -78,6 +78,7 @@ module Gherkin
     # end 
     
     IN_OP = '%'
+    INCLUDE_OP = '&'
     ITEM_SPLIT = ';'
 
     def ruby_expression
@@ -113,16 +114,24 @@ module Gherkin
 
       def print_expression
         hash_var = "vars['#{tag_name}']"
-        hash_var = "[#{hash_var}].flatten" if operator == '.any?'          
-        @left = "#{pre_op}#{hash_var}"
-        ex = (right == true) ? left : "#{left}#{operator}#{right}"
+        hash_var = "[#{hash_var}].flatten" if operator == INCLUDE_OP
+        @left = "#{hash_var}"
+        ex = (right == true) ? "#{pre_op}#{left}" : print_expr
+      end
+
+      def print_expr
+        if operator == INCLUDE_OP
+          return "!(#{left} #{operator} #{right}).empty?" if pre_op == ''
+          return "(#{left} #{operator} #{right}).empty?"
+        end
+        "#{pre_op}(#{left} #{operator} #{right})"               
       end
 
       def set tag_expr
-        @tag_name = tag_expr[0]
+        @tag_name = tag_expr[0]  
         if tag_name =~ /^~(@\w+)/
           @tag_name = $1 
-          @pre_op = '!'  
+          @pre_op = '!'
         end
         handle_list(tag_expr) if tag_expr.size > 2 
       end
@@ -133,9 +142,9 @@ module Gherkin
       end      
 
       def set_right arg
-        @right = if operator == '.any?'
+        @right = if operator == INCLUDE_OP
           arg = [convert_list(arg)].flatten
-          "{|item| #{arg.inspect}.include?(item)}"
+          "#{arg.inspect}"
         else
           is_numeric?(arg) ? arg : arg.inspect
         end
@@ -154,7 +163,7 @@ module Gherkin
       def set_operator op
         @operator = case op
         when IN_OP
-          '.any?'
+          INCLUDE_OP
         when '='
           '=='
         else                               
