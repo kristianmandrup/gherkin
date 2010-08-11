@@ -18,9 +18,27 @@ module Gherkin
       @ands.empty?
     end
 
-    def eval(tags)
+    # def eval(tags)
+    #   return true if @ands.flatten.empty?
+    #   vars = Hash[*tags.map{|tag| [tag, true]}.flatten]
+    #   !!Kernel.eval(ruby_expression)
+    # end
+
+    def eval(tag_hash) 
+      tag_hash = case tag_hash
+      when Array
+        tag_hash.inject({}) do |hash, item| 
+          hash[item] = true
+          hash
+        end
+      when Hash
+        tag_hash
+      else
+        raise ArgumentException, "tag must eval as either Hash or Array"
+      end
+      
       return true if @ands.flatten.empty?
-      vars = Hash[*tags.map{|tag| [tag, true]}.flatten]
+      vars = tag_hash           
       !!Kernel.eval(ruby_expression)
     end
 
@@ -47,16 +65,103 @@ module Gherkin
       tags_with_negation
     end
 
+    # def ruby_expression
+    #   "(" + @ands.map do |ors|
+    #     ors.map do |tag|
+    #       if tag =~ /^~(.*)/
+    #         "!vars['#{$1}']"
+    #       else
+    #         "vars['#{tag}']"
+    #       end
+    #     end.join("||")
+    #   end.join(")&&(") + ")"
+    # end 
+    
+    IN_OP = '%'
+    ITEM_SPLIT = ';'
+
     def ruby_expression
-      "(" + @ands.map do |ors|
-        ors.map do |tag|
-          if tag =~ /^~(.*)/
-            "!vars['#{$1}']"
-          else
-            "vars['#{tag}']"
-          end
+      expr = "(" + @ands.map do |ors|
+        ors.map do |tag| 
+          tag_expr = TagStatement.parse_expression tag
+          TagStatement.new(tag_expr).print_expression
         end.join("||")
       end.join(")&&(") + ")"
-    end
+      expr
+    end 
+    
+    class TagStatement
+      attr_accessor :pre_op, :left, :operator, :right, :tag_name
+      
+      def initialize tag_expr
+        @operator= '=='
+        @right=true
+        @pre_op = ''
+        @tag_name = ''
+        set tag_expr
+      end 
+
+      def self.parse_expression tag
+        tag.gsub! /-?#{IN_OP}-?/, IN_OP
+        tag.split /(#{IN_OP}|<=|>=|=|>|<)/
+      end
+        
+
+      def to_s
+        "tag_name: #{tag_name.inspect}, pre_op: #{pre_op}, left: #{left}, operator: #{operator}, right: #{right}"
+      end
+
+      def print_expression
+        hash_var = "vars['#{tag_name}']"
+        hash_var = "[#{hash_var}].flatten" if operator == '.any?'          
+        @left = "#{pre_op}#{hash_var}"
+        ex = (right == true) ? left : "#{left}#{operator}#{right}"
+      end
+
+      def set tag_expr
+        @tag_name = tag_expr[0]
+        if tag_name =~ /^~(@\w+)/
+          @tag_name = $1 
+          @pre_op = '!'  
+        end
+        handle_list(tag_expr) if tag_expr.size > 2 
+      end
+      
+      def handle_list tag_expr        
+        set_operator tag_expr[1]
+        set_right tag_expr[2]
+      end      
+
+      def set_right arg
+        @right = if operator == '.any?'
+          arg = [convert_list(arg)].flatten
+          "{|item| #{arg.inspect}.include?(item)}"
+        else
+          is_numeric?(arg) ? arg : arg.inspect
+        end
+      end
+      
+      def convert_list list_str
+        list_str.split(ITEM_SPLIT).map do |item|
+          is_numeric?(item) ? item.to_i : item.to_s
+        end
+      end
+
+      def is_numeric?(i)
+          i.to_i.to_s == i || i.to_f.to_s == i
+      end
+
+      def set_operator op
+        @operator = case op
+        when IN_OP
+          '.any?'
+        when '='
+          '=='
+        else                               
+          raise ArgumentError, "Unknown tag comparison operator: #{op}" if !['>=', '<=', '>', '<', '='].include?(op)
+          op
+        end
+      end      
+    end    
   end
 end
