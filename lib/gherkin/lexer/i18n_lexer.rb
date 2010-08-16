@@ -19,7 +19,10 @@ module Gherkin
       end
 
       def scan(source)
-        create_delegate(source).scan(source)
+        puts "source: #{source}"
+        _delegate = create_delegate(source)
+        puts "delegate: #{_delegate}"
+        _delegate.scan(source)
       end
 
     private

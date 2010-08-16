@@ -85,6 +85,7 @@ module Gherkin
       expr = "(" + @ands.map do |ors|
         ors.map do |tag| 
           tag_expr = TagStatement.parse_expression tag
+          # puts TagStatement.new(tag_expr).print_expression
           TagStatement.new(tag_expr).print_expression
         end.join("||")
       end.join(")&&(") + ")"
@@ -143,16 +144,24 @@ module Gherkin
 
       def set_right arg
         @right = if operator == INCLUDE_OP
-          arg = [convert_list(arg)].flatten
-          "#{arg.inspect}"
+          arg = [convert_list(arg)].flatten 
+          "#{arg}"
         else
-          is_numeric?(arg) ? arg : arg.inspect
+          convert_val_single(arg)
         end
+      end
+
+      def convert_val_single val
+        is_numeric?(val) ? val.to_i : val.inspect
+      end
+
+      def convert_val val
+        is_numeric?(val) ? val.to_i : val
       end
       
       def convert_list list_str
         list_str.split(ITEM_SPLIT).map do |item|
-          is_numeric?(item) ? item.to_i : item.to_s
+          convert_val(item)
         end
       end
 
